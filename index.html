@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="description" content="英語の授業音声をブラウザ内で文字起こしし、日本語に翻訳する無料の実験的Webアプリ。">
+<title>Classroom Live Translate</title>
+<style>
+:root{color-scheme:dark;--bg:#111827;--panel:#1f2937;--muted:#b8c4d6;--line:#374151;--accent:#93c5fd;--ok:#86efac;--warn:#fde68a;--err:#fca5a5}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f9fafb;font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:auto;padding:clamp(14px,3vw,28px);padding-bottom:48px}
+h1{font-size:clamp(1.4rem,4vw,2rem);margin:0}h2{font-size:1rem;margin:0 0 12px;color:var(--accent)}
+p{margin:8px 0}.muted{color:var(--muted);font-size:.92rem}
+header{margin-bottom:18px}.status{background:var(--panel);border:1px solid var(--line);padding:12px 14px;border-radius:14px;margin:16px 0;overflow-wrap:anywhere}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+button{border:0;border-radius:12px;padding:12px 16px;min-height:46px;font:inherit;font-weight:700;background:var(--accent);color:#111827}
+button.secondary{background:#374151;color:#fff;border:1px solid #4b5563}button.danger{background:#7f1d1d;color:#fff}button:disabled{opacity:.45}
+.chips{display:flex;flex-wrap:wrap;gap:7px}.chip{border:1px solid var(--line);background:#1f2937;border-radius:99px;padding:4px 10px;font-size:.82rem}
+.grid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:14px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:180px}
+.output{white-space:pre-wrap;overflow-wrap:anywhere;font-size:1.08rem;min-height:120px}
+.output:empty:before{content:attr(data-placeholder);color:#9ca3af}
+progress{width:100%;height:8px;accent-color:var(--accent)}.hidden{display:none!important}
+details{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:18px}summary{font-weight:700;cursor:pointer}
+footer{margin-top:18px}.error{color:var(--err)}.success{color:var(--ok)}.warning{color:var(--warn)}
+@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Classroom Live Translate</h1>
+  <p class="muted">英語の授業音声 → 英語の文字起こし → 日本語訳</p>
+  <div class="chips"><span class="chip">無料・APIキー不要</span><span class="chip">音声は外部AI APIへ送信しない設計</span><span class="chip">実験版</span></div>
+</header>
+
+<div id="status" class="status" role="status" aria-live="polite">準備できました。まずモデルを読み込んでください。</div>
+<progress id="progress" value="0" max="1" class="hidden" aria-label="モデル読み込み進捗"></progress>
+<div class="controls">
+  <button id="load">① モデルを読み込む</button>
+  <button id="start" disabled>② マイク開始</button>
+  <button id="stop" class="secondary" disabled>停止</button>
+  <button id="clear" class="secondary">表示を消去</button>
+  <button id="copy" class="secondary">結果をコピー</button>
+</div>
+<div class="grid">
+  <section class="panel"><h2>English — transcript</h2><div id="english" class="output" aria-live="polite" data-placeholder="先生の英語がここに表示されます。"></div></section>
+  <section class="panel"><h2>日本語 — 翻訳</h2><div id="japanese" class="output" aria-live="polite" data-placeholder="日本語訳がここに表示されます。"></div></section>
+</div>
+
+<details>
+<summary>最初に読んでください：制限とプライバシー</summary>
+<ul>
+<li>音声認識モデルと翻訳モデルは初回にインターネットからダウンロードされます。モデルのサイズが大きいため、Wi‑Fiでの初回利用をおすすめします。</li>
+<li>このアプリは推論APIを呼び出さず、ダウンロード後の音声認識・翻訳をブラウザ内で実行する設計です。ただし、ライブラリとモデルを取得するため、初回やキャッシュ消去後は外部ホストへ接続します。</li>
+<li>API回数制限やAPI利用料金はありませんが、端末性能、メモリ、バッテリー、通信量、ブラウザの制約はあります。無制限・常時安定動作を保証するものではありません。</li>
+<li>iPadのSafari/Chromeでの性能は端末・iOSバージョン・学校のネットワーク設定によって異なります。授業前に短いテストを行ってください。初回ロードに失敗したり、ページが再読み込みされたりする場合があります。</li>
+<li>マイク音声はこのページで処理し、録音ファイルとして保存しません。利用時は学校のルールと先生の指示に従ってください。</li>
+<li>翻訳は機械翻訳です。専門用語・固有名詞・騒音のある音声では誤認識することがあります。</li>
+</ul>
+</details>
+<footer class="muted">モデル: <a href="https://huggingface.co/onnx-community/whisper-tiny.en" target="_blank" rel="noopener noreferrer">Whisper Tiny English</a> / <a href="https://huggingface.co/Xenova/opus-mt-en-jap" target="_blank" rel="noopener noreferrer">English→Japanese translation</a>. Powered by Transformers.js. 初回利用にはネット接続が必要です。</footer>
+</main>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const statusEl = $('#status'), progressEl = $('#progress');
+const loadBtn = $('#load'), startBtn = $('#start'), stopBtn = $('#stop');
+const englishEl = $('#english'), japaneseEl = $('#japanese');
+let asr = null, translator = null, stream = null, context = null, source = null, processor = null, mute = null;
+let running = false, loading = false, processing = false;
+let parts = [], sampleCount = 0, lastVoiceAt = 0, fullEnglish = [], fullJapanese = [];
+const RATE = 16000, MAX_CHUNK_SECONDS = 5, SILENCE_MS = 700;
+function status(message, kind='') {
+  statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  statusEl.textContent = message;
+}
+function renderText() {
+  englishEl.textContent = fullEnglish.join('\n');
+  japaneseEl.textContent = fullJapanese.join('\n');
+}
+function downsample(input, inputRate, outputRate) {
+  if (inputRate === outputRate) return new Float32Array(input);
+  const ratio = inputRate / outputRate, length = Math.floor(input.length / ratio);
+  const output = new Float32Array(length);
+  for (let i=0;i<length;i++) {
+    const start=Math.floor(i*ratio), end=Math.min(Math.floor((i+1)*ratio),input.length);
+    let sum=0, n=0;
+    for(let j=start;j<end;j++){sum+=input[j];n++;}
+    output[i]=n ? sum/n : 0;
+  }
+  return output;
+}
+async function handleChunk(audio) {
+  if (processing || !asr || !translator || audio.length < RATE) return;
+  processing = true;
+  try {
+    status('音声を処理しています…');
+    const result = await asr(audio, { sampling_rate: RATE, chunk_length_s: 5, stride_length_s: 0.5 });
+    const text = (result?.text || '').trim();
+    if (text && !/^\[BLANK_AUDIO\]$/i.test(text)) {
+      fullEnglish.push(text);
+      englishEl.textContent = fullEnglish.join('\n');
+      const translated = await translator(text);
+      const ja = Array.isArray(translated)
+        ? translated.map(x => x.translation_text || '').join('')
+        : (translated?.translation_text || '');
+      if (ja.trim()) fullJapanese.push(ja.trim());
+      japaneseEl.textContent = fullJapanese.join('\n');
+      status('マイク動作中：音声認識・翻訳を実行しています。','success');
+    } else {
+      status('マイク動作中：認識できる英語がまだありません。','warning');
+    }
+  } catch (err) {
+    console.error(err);
+    status('処理エラー：' + (err?.message || String(err)) + '。モデルの読み込み・端末メモリ・ブラウザ対応を確認してください。','error');
+  } finally {
+    processing = false;
+  }
+}
+function onAudio(event) {
+  if (!running) return;
+  const raw = event.inputBuffer.getChannelData(0);
+  const samples = downsample(raw, context.sampleRate, RATE);
+  let peak = 0;
+  for (let i=0;i<samples.length;i++) peak = Math.max(peak, Math.abs(samples[i]));
+  if (peak > 0.018) lastVoiceAt = Date.now();
+  parts.push(samples); sampleCount += samples.length;
+  const hitLength = sampleCount >= RATE * MAX_CHUNK_SECONDS;
+  const hitSilence = sampleCount >= RATE * 2 && Date.now()-lastVoiceAt > SILENCE_MS;
+  if (hitLength || hitSilence) {
+    const merged = new Float32Array(sampleCount);
+    let offset=0;
+    for (const p of parts) { merged.set(p,offset); offset+=p.length; }
+    parts=[]; sampleCount=0;
+    // Skip a chunk rather than queueing unbounded audio while inference is busy.
+    if (!processing) void handleChunk(merged);
+  }
+}
+async function loadModels() {
+  if (loading || (asr && translator)) return;
+  loading=true; loadBtn.disabled=true; progressEl.classList.remove('hidden');
+  try {
+    if (!window.isSecureContext) throw new Error('HTTPSで開いてください。マイク機能は安全な接続でのみ利用できます。');
+    status('推論ライブラリを読み込んでいます…');
+    const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2');
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+    const progress = (info) => {
+      if (info.status === 'progress' && Number.isFinite(info.progress)) {
+        progressEl.value = Math.max(0,Math.min(1,info.progress/100));
+        status('モデルをダウンロードしています：' + Math.round(info.progress) + '%');
+      } else if (info.status === 'initiate') status('モデルファイルを取得しています…');
+      else if (info.status === 'done') status('モデルファイルの取得が完了しました。');
+    };
+    status('英語音声認識モデルを読み込んでいます。初回は時間がかかります…');
+    asr = await pipeline('automatic-speech-recognition','onnx-community/whisper-tiny.en',{dtype:'q8', progress_callback:progress});
+    status('英語→日本語翻訳モデルを読み込んでいます…');
+    translator = await pipeline('translation','Xenova/opus-mt-en-jap',{dtype:'q8', progress_callback:progress});
+    startBtn.disabled=false;
+    progressEl.classList.add('hidden');
+    status('準備完了。授業前にマイクの短いテストをしてください。','success');
+  } catch (err) {
+    console.error(err);
+    status('モデルを読み込めませんでした：' + (err?.message || String(err)) + '。ネットワーク制限、ブラウザ対応、空きメモリを確認してください。','error');
+    loadBtn.disabled=false;
+    progressEl.classList.add('hidden');
+  } finally { loading=false; }
+}
+async function startMic() {
+  if (!asr || !translator) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    status('このブラウザではマイク機能を利用できません。HTTPS対応のSafari/Chromeで開いてください。','error'); return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    context = new (window.AudioContext || window.webkitAudioContext)();
+    if (context.state==='suspended') await context.resume();
+    source=context.createMediaStreamSource(stream);
+    processor=context.createScriptProcessor(4096,1,1);
+    processor.onaudioprocess=onAudio;
+    mute=context.createGain(); mute.gain.value=0;
+    source.connect(processor); processor.connect(mute); mute.connect(context.destination);
+    running=true; lastVoiceAt=Date.now();
+    startBtn.disabled=true; stopBtn.disabled=false;
+    status('マイク動作中。端末を先生の声が届く位置に置いてください。');
+  } catch(err) {
+    status('マイクを開始できません：' + (err?.message || String(err)) + '。ブラウザのマイク許可とHTTPSを確認してください。','error');
+  }
+}
+async function stopMic() {
+  running=false;
+  if(processor){processor.disconnect();processor.onaudioprocess=null;processor=null;}
+  if(source){source.disconnect();source=null;}
+  if(mute){mute.disconnect();mute=null;}
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  if(context){await context.close().catch(()=>{});context=null;}
+  parts=[];sampleCount=0;
+  startBtn.disabled=!(asr&&translator);stopBtn.disabled=true;
+  status('マイクを停止しました。');
+}
+loadBtn.addEventListener('click',loadModels);
+startBtn.addEventListener('click',startMic);
+stopBtn.addEventListener('click',stopMic);
+$('#clear').addEventListener('click',()=>{fullEnglish=[];fullJapanese=[];renderText();status('表示を消去しました。');});
+$('#copy').addEventListener('click',async()=>{
+  const content='English\n'+fullEnglish.join('\n')+'\n\n日本語\n'+fullJapanese.join('\n');
+  try { await navigator.clipboard.writeText(content); status('英語と日本語の結果をコピーしました。','success'); }
+  catch { status('コピーできませんでした。ブラウザのクリップボード権限を確認してください。','error'); }
+});
+window.addEventListener('pagehide',()=>{void stopMic();});
+</script>
+</body>
+</html>
